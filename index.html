@@ -46,8 +46,11 @@
     <div class="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border-4 border-blue-200">
         
         <!-- Header -->
-        <div class="bg-blue-400 p-6 text-center">
+        <div class="bg-blue-400 p-6 text-center relative">
             <h1 class="text-3xl md:text-4xl font-bold text-white tracking-wide">📝 Dictation Buddy</h1>
+            <button id="btnHistory" class="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white text-blue-500 px-3 py-2 rounded-xl font-bold shadow-md hover:bg-blue-50 transition-colors text-sm md:text-base">
+                📜 History
+            </button>
         </div>
 
         <div class="p-6 space-y-6">
@@ -142,6 +145,32 @@
         </div>
     </div>
 
+    <!-- History Modal -->
+    <div id="historyModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-3xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-gray-800">📜 History</h2>
+                <button id="btnCloseHistory" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <div id="historyList" class="p-6 overflow-y-auto flex-1 space-y-4">
+                <!-- History Items will go here -->
+                <p class="text-center text-gray-400">No history yet.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Review Modal -->
+    <div id="reviewModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl p-6 text-center">
+            <h2 class="text-3xl font-bold text-green-500 mb-4">🎉 Great Job!</h2>
+            <p class="text-gray-600 mb-4">Here is the text you just practiced:</p>
+            <div id="reviewText" class="bg-gray-50 p-4 rounded-xl text-left text-lg text-gray-800 max-h-60 overflow-y-auto mb-6 whitespace-pre-wrap"></div>
+            <button id="btnCloseReview" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl text-xl shadow-md transition-colors">
+                Close
+            </button>
+        </div>
+    </div>
+
     <script>
         // --- Variables ---
         const synth = window.speechSynthesis;
@@ -166,6 +195,15 @@
         const btnCamera = document.getElementById('btnCamera');
         const cameraInput = document.getElementById('cameraInput');
         
+        const btnHistory = document.getElementById('btnHistory');
+        const historyModal = document.getElementById('historyModal');
+        const btnCloseHistory = document.getElementById('btnCloseHistory');
+        const historyList = document.getElementById('historyList');
+
+        const reviewModal = document.getElementById('reviewModal');
+        const reviewText = document.getElementById('reviewText');
+        const btnCloseReview = document.getElementById('btnCloseReview');
+
         const setupPanel = document.getElementById('setup-panel');
         const activeDisplay = document.getElementById('active-display');
         const currentWordIndexEl = document.getElementById('currentWordIndex');
@@ -174,6 +212,43 @@
 
         // --- Initialization ---
         
+        // Load State
+        function loadState() {
+            const savedText = localStorage.getItem('dictation_text');
+            if (savedText) wordInput.value = savedText;
+
+            const savedSettings = JSON.parse(localStorage.getItem('dictation_settings') || '{}');
+            if (savedSettings.lang) languageSelect.value = savedSettings.lang;
+            if (savedSettings.speed) {
+                rateRange.value = savedSettings.speed;
+                speedValue.textContent = savedSettings.speed + 'x';
+            }
+            if (savedSettings.gap) {
+                gapRange.value = savedSettings.gap;
+                gapValue.textContent = savedSettings.gap + 's';
+            }
+            if (savedSettings.punctuation !== undefined) readPunctuation.checked = savedSettings.punctuation;
+        }
+        loadState();
+
+        function saveState() {
+            localStorage.setItem('dictation_text', wordInput.value);
+            const settings = {
+                lang: languageSelect.value,
+                speed: rateRange.value,
+                gap: gapRange.value,
+                punctuation: readPunctuation.checked
+            };
+            localStorage.setItem('dictation_settings', JSON.stringify(settings));
+        }
+
+        // Add listeners for auto-save
+        wordInput.addEventListener('input', saveState);
+        languageSelect.addEventListener('change', saveState);
+        rateRange.addEventListener('change', saveState);
+        gapRange.addEventListener('change', saveState);
+        readPunctuation.addEventListener('change', saveState);
+
         // Update slider labels
         rateRange.addEventListener('input', (e) => speedValue.textContent = e.target.value + 'x');
         gapRange.addEventListener('input', (e) => gapValue.textContent = e.target.value + 's');
@@ -186,6 +261,84 @@
         loadVoices();
         if (speechSynthesis.onvoiceschanged !== undefined) {
             speechSynthesis.onvoiceschanged = loadVoices;
+        }
+
+        // --- History Functions ---
+        function getHistory() {
+            return JSON.parse(localStorage.getItem('dictation_history') || '[]');
+        }
+
+        function addToHistory(text) {
+            const history = getHistory();
+            // Avoid duplicates at the top
+            if (history.length > 0 && history[0].text === text) return;
+
+            const newItem = {
+                id: Date.now(),
+                date: new Date().toLocaleString(),
+                text: text,
+                lang: languageSelect.value
+            };
+            // Add to beginning, limit to 20 items
+            history.unshift(newItem);
+            if (history.length > 20) history.pop();
+            localStorage.setItem('dictation_history', JSON.stringify(history));
+        }
+
+        function renderHistory() {
+            const history = getHistory();
+            historyList.innerHTML = '';
+            
+            if (history.length === 0) {
+                historyList.innerHTML = '<p class="text-center text-gray-400">No history yet.</p>';
+                return;
+            }
+
+            history.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-gray-50 p-4 rounded-xl border border-gray-200 flex justify-between items-center hover:bg-blue-50 transition-colors';
+                
+                const info = document.createElement('div');
+                info.className = 'flex-1 cursor-pointer';
+                info.onclick = () => loadHistoryItem(item);
+                
+                const date = document.createElement('div');
+                date.className = 'text-xs text-gray-400 font-bold mb-1';
+                date.textContent = item.date;
+                
+                const preview = document.createElement('div');
+                preview.className = 'text-gray-700 font-medium truncate w-48 md:w-64';
+                preview.textContent = item.text;
+                
+                info.appendChild(date);
+                info.appendChild(preview);
+                
+                const btnDelete = document.createElement('button');
+                btnDelete.innerHTML = '🗑️';
+                btnDelete.className = 'ml-4 p-2 text-gray-400 hover:text-red-500 transition-colors';
+                btnDelete.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteHistoryItem(item.id);
+                };
+                
+                div.appendChild(info);
+                div.appendChild(btnDelete);
+                historyList.appendChild(div);
+            });
+        }
+
+        function loadHistoryItem(item) {
+            wordInput.value = item.text;
+            languageSelect.value = item.lang; // Restore language too
+            saveState(); // Auto-save immediately
+            historyModal.classList.add('hidden');
+        }
+
+        function deleteHistoryItem(id) {
+            let history = getHistory();
+            history = history.filter(item => item.id !== id);
+            localStorage.setItem('dictation_history', JSON.stringify(history));
+            renderHistory();
         }
 
         // --- Core Functions ---
@@ -322,6 +475,9 @@
             isRunning = true;
             isPaused = false;
 
+            // Save to History
+            addToHistory(wordInput.value);
+
             // Update UI
             setupPanel.classList.add('hidden');
             activeDisplay.classList.remove('hidden');
@@ -402,13 +558,22 @@
 
         function finishDictation() {
             stopDictation();
-            alert("Dictation Complete! Great job! 🎉");
+            // Show Review Modal
+            reviewText.textContent = wordInput.value;
+            reviewModal.classList.remove('hidden');
         }
 
         // --- Event Listeners ---
         btnStart.addEventListener('click', startDictation);
         btnPause.addEventListener('click', pauseDictation);
         btnStop.addEventListener('click', stopDictation);
+
+        btnHistory.addEventListener('click', () => {
+            renderHistory();
+            historyModal.classList.remove('hidden');
+        });
+        btnCloseHistory.addEventListener('click', () => historyModal.classList.add('hidden'));
+        btnCloseReview.addEventListener('click', () => reviewModal.classList.add('hidden'));
 
         // iOS Safari quirk: Speech synthesis must be triggered by user interaction first.
         // We can play a silent utterance on the first touch of the page to "unlock" it.
