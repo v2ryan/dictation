@@ -48,24 +48,35 @@
         <!-- Header -->
         <div class="bg-blue-400 p-6 text-center relative">
             <h1 class="text-3xl md:text-4xl font-bold text-white tracking-wide">📝 Dictation Buddy</h1>
-            <button id="btnHistory" class="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white text-blue-500 px-3 py-2 rounded-xl font-bold shadow-md hover:bg-blue-50 transition-colors text-sm md:text-base">
-                📜 History
-            </button>
         </div>
 
         <div class="p-6 space-y-6">
 
             <!-- Input Section -->
             <div id="setup-panel">
-                <div class="flex justify-between items-center mb-2">
-                    <label class="block text-xl text-gray-700 font-bold">1. Paste Words Here:</label>
-                    <button id="btnCamera" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
-                        <span class="text-lg">📷</span> Scan Photo
-                    </button>
+                <div class="flex flex-wrap justify-between items-end mb-2 gap-2">
+                    <label class="block text-xl text-gray-700 font-bold">1. Word List:</label>
+                    <div class="flex gap-2">
+                        <button id="btnHistoryMain" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
+                            <span class="text-lg">📜</span> History
+                        </button>
+                        <button id="btnCamera" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
+                            <span class="text-lg">📷</span> Scan
+                        </button>
+                    </div>
                     <input type="file" id="cameraInput" accept="image/*" class="hidden">
                 </div>
                 <textarea id="wordInput" class="w-full h-32 p-4 border-2 border-blue-200 rounded-xl text-lg focus:outline-none focus:border-blue-400 transition-colors resize-none" placeholder="apple, banana, orange..."></textarea>
-                <p class="text-sm text-gray-500 mt-1 text-right">Separate words with commas or new lines.</p>
+                
+                <!-- Quick History Chips -->
+                <div id="quickHistoryContainer" class="mt-3">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Recent:</span>
+                    </div>
+                    <div id="quickHistoryList" class="flex flex-wrap gap-2">
+                        <!-- Chips go here -->
+                    </div>
+                </div>
             </div>
 
             <!-- Settings Section -->
@@ -195,10 +206,11 @@
         const btnCamera = document.getElementById('btnCamera');
         const cameraInput = document.getElementById('cameraInput');
         
-        const btnHistory = document.getElementById('btnHistory');
+        const btnHistoryMain = document.getElementById('btnHistoryMain');
         const historyModal = document.getElementById('historyModal');
         const btnCloseHistory = document.getElementById('btnCloseHistory');
         const historyList = document.getElementById('historyList');
+        const quickHistoryList = document.getElementById('quickHistoryList');
 
         const reviewModal = document.getElementById('reviewModal');
         const reviewText = document.getElementById('reviewText');
@@ -228,6 +240,8 @@
                 gapValue.textContent = savedSettings.gap + 's';
             }
             if (savedSettings.punctuation !== undefined) readPunctuation.checked = savedSettings.punctuation;
+            
+            renderQuickHistory();
         }
         loadState();
 
@@ -283,6 +297,28 @@
             history.unshift(newItem);
             if (history.length > 20) history.pop();
             localStorage.setItem('dictation_history', JSON.stringify(history));
+            renderQuickHistory();
+        }
+
+        function renderQuickHistory() {
+            const history = getHistory().slice(0, 4); // Top 4
+            quickHistoryList.innerHTML = '';
+            
+            if (history.length === 0) {
+                quickHistoryList.innerHTML = '<span class="text-gray-400 text-sm italic">No recent items</span>';
+                return;
+            }
+
+            history.forEach(item => {
+                const chip = document.createElement('button');
+                chip.className = 'bg-purple-50 hover:bg-purple-100 text-purple-700 text-sm px-3 py-1 rounded-lg border border-purple-200 transition-colors truncate max-w-[150px] font-medium';
+                chip.textContent = item.text;
+                chip.title = item.text; // Tooltip
+                chip.onclick = () => {
+                    loadHistoryItem(item);
+                };
+                quickHistoryList.appendChild(chip);
+            });
         }
 
         function renderHistory() {
@@ -339,6 +375,7 @@
             history = history.filter(item => item.id !== id);
             localStorage.setItem('dictation_history', JSON.stringify(history));
             renderHistory();
+            renderQuickHistory();
         }
 
         // --- Core Functions ---
@@ -568,7 +605,7 @@
         btnPause.addEventListener('click', pauseDictation);
         btnStop.addEventListener('click', stopDictation);
 
-        btnHistory.addEventListener('click', () => {
+        btnHistoryMain.addEventListener('click', () => {
             renderHistory();
             historyModal.classList.remove('hidden');
         });
