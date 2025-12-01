@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Kids Dictation Buddy</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
     <style>
         body {
@@ -53,7 +54,13 @@
 
             <!-- Input Section -->
             <div id="setup-panel">
-                <label class="block text-xl text-gray-700 mb-2 font-bold">1. Paste Words Here:</label>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-xl text-gray-700 font-bold">1. Paste Words Here:</label>
+                    <button id="btnCamera" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
+                        <span class="text-lg">📷</span> Scan Photo
+                    </button>
+                    <input type="file" id="cameraInput" accept="image/*" class="hidden">
+                </div>
                 <textarea id="wordInput" class="w-full h-32 p-4 border-2 border-blue-200 rounded-xl text-lg focus:outline-none focus:border-blue-400 transition-colors resize-none" placeholder="apple, banana, orange..."></textarea>
                 <p class="text-sm text-gray-500 mt-1 text-right">Separate words with commas or new lines.</p>
             </div>
@@ -146,6 +153,8 @@
         const btnStart = document.getElementById('btnStart');
         const btnPause = document.getElementById('btnPause');
         const btnStop = document.getElementById('btnStop');
+        const btnCamera = document.getElementById('btnCamera');
+        const cameraInput = document.getElementById('cameraInput');
         
         const setupPanel = document.getElementById('setup-panel');
         const activeDisplay = document.getElementById('active-display');
@@ -354,6 +363,60 @@
                 synth.getVoices();
             }
         }, { once: true });
+
+        // --- OCR Functionality ---
+        btnCamera.addEventListener('click', () => {
+            cameraInput.click();
+        });
+
+        cameraInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // UI Loading State
+            const originalBtnContent = btnCamera.innerHTML;
+            btnCamera.innerHTML = '<span class="animate-spin">⏳</span> Scanning...';
+            btnCamera.disabled = true;
+            btnCamera.classList.add('opacity-75', 'cursor-wait');
+
+            try {
+                // Initialize worker with English and Traditional Chinese
+                const worker = await Tesseract.createWorker('eng+chi_tra');
+                
+                const ret = await worker.recognize(file);
+                await worker.terminate();
+                
+                let text = ret.data.text;
+                
+                // Cleanup Text
+                // 1. Replace newlines with commas
+                // 2. Remove pipes, brackets which are common OCR errors for table lines
+                // 3. Collapse multiple commas/spaces
+                text = text.replace(/\n/g, ',')
+                           .replace(/[|\[\]{}]/g, ' ')
+                           .replace(/\s+/g, ' ') // Collapse spaces
+                           .replace(/,\s*,/g, ',') // Remove double commas
+                           .trim();
+
+                // Append to existing text
+                const currentText = wordInput.value.trim();
+                if (currentText.length > 0 && !currentText.endsWith(',')) {
+                    wordInput.value = currentText + ', ' + text;
+                } else {
+                    wordInput.value = currentText + text;
+                }
+                
+            } catch (err) {
+                console.error("OCR Error:", err);
+                alert("Oops! Could not read the text. Please try again with a clearer photo.");
+            } finally {
+                // Reset UI
+                btnCamera.innerHTML = originalBtnContent;
+                btnCamera.disabled = false;
+                btnCamera.classList.remove('opacity-75', 'cursor-wait');
+                cameraInput.value = ''; // Allow selecting same file again
+            }
+        });
 
     </script>
 </body>
