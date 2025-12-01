@@ -98,6 +98,15 @@
                             <span>10s</span>
                         </div>
                     </div>
+
+                    <!-- Options -->
+                    <div class="md:col-span-2 bg-white p-3 rounded-xl border border-yellow-200">
+                        <label class="flex items-center space-x-3 cursor-pointer">
+                            <input type="checkbox" id="readPunctuation" class="w-6 h-6 text-blue-600 rounded focus:ring-blue-500 border-gray-300">
+                            <span class="text-gray-700 font-bold text-lg">🗣️ Read Punctuation (讀標點)</span>
+                        </label>
+                        <p class="text-xs text-gray-500 mt-1 ml-9">Reads symbols like comma, period, etc. (Splits by newline only)</p>
+                    </div>
                 </div>
             </div>
 
@@ -147,6 +156,7 @@
         const languageSelect = document.getElementById('languageSelect');
         const rateRange = document.getElementById('rateRange');
         const gapRange = document.getElementById('gapRange');
+        const readPunctuation = document.getElementById('readPunctuation');
         const speedValue = document.getElementById('speedValue');
         const gapValue = document.getElementById('gapValue');
         
@@ -182,8 +192,15 @@
 
         function parseWords() {
             const text = wordInput.value;
-            // Split by newline or comma, filter empty strings, trim whitespace
-            return text.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+            
+            if (readPunctuation.checked) {
+                // If reading punctuation, we assume sentences/lines.
+                // Split by newline only, keeping commas inside the text.
+                return text.split(/\n+/).map(w => w.trim()).filter(w => w.length > 0);
+            } else {
+                // Standard mode: Split by newline or comma
+                return text.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+            }
         }
 
         function getVoice(lang) {
@@ -192,14 +209,51 @@
             return voices.find(voice => voice.lang === lang) || null;
         }
 
+        function processPunctuation(text, lang) {
+            if (!readPunctuation.checked) return text;
+
+            // Mapping for English
+            if (lang.startsWith('en')) {
+                return text
+                    .replace(/\./g, ' full stop ')
+                    .replace(/,/g, ' comma ')
+                    .replace(/\?/g, ' question mark ')
+                    .replace(/!/g, ' exclamation mark ')
+                    .replace(/:/g, ' colon ')
+                    .replace(/;/g, ' semi colon ')
+                    .replace(/"/g, ' quote ')
+                    .replace(/'/g, ' apostrophe ');
+            } 
+            // Mapping for Chinese (Cantonese)
+            else if (lang.startsWith('zh')) {
+                return text
+                    .replace(/。/g, ' 句號 ')
+                    .replace(/，/g, ' 逗號 ')
+                    .replace(/？/g, ' 問號 ')
+                    .replace(/！/g, ' 感嘆號 ')
+                    .replace(/：/g, ' 冒號 ')
+                    .replace(/；/g, ' 分號 ')
+                    .replace(/「/g, ' 上引號 ')
+                    .replace(/」/g, ' 下引號 ')
+                    .replace(/、/g, ' 頓號 ')
+                    .replace(/\./g, ' 點 ')
+                    .replace(/,/g, ' 逗號 ');
+            }
+            return text;
+        }
+
         function speak(text, callback) {
             if (synth.speaking) {
                 console.error('speechSynthesis.speaking');
                 return;
             }
             
-            const utterThis = new SpeechSynthesisUtterance(text);
             const selectedLang = languageSelect.value;
+            
+            // Process text for punctuation reading if enabled
+            const textToSpeak = processPunctuation(text, selectedLang);
+
+            const utterThis = new SpeechSynthesisUtterance(textToSpeak);
             
             utterThis.lang = selectedLang;
             utterThis.rate = parseFloat(rateRange.value);
@@ -389,21 +443,25 @@
                 let text = ret.data.text;
                 
                 // Cleanup Text
-                // 1. Replace newlines with commas
-                // 2. Remove pipes, brackets which are common OCR errors for table lines
-                // 3. Collapse multiple commas/spaces
-                text = text.replace(/\n/g, ',')
-                           .replace(/[|\[\]{}]/g, ' ')
+                // 1. Remove pipes, brackets which are common OCR errors for table lines
+                // 2. Fix Chinese spacing (remove spaces between Chinese characters)
+                // 3. Collapse multiple spaces
+                // 4. Remove double commas
+                
+                text = text.replace(/[|\[\]{}]/g, ' ')
+                           // Remove spaces between Chinese characters (range \u4e00-\u9fa5)
+                           .replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2')
                            .replace(/\s+/g, ' ') // Collapse spaces
                            .replace(/,\s*,/g, ',') // Remove double commas
                            .trim();
 
                 // Append to existing text
                 const currentText = wordInput.value.trim();
-                if (currentText.length > 0 && !currentText.endsWith(',')) {
-                    wordInput.value = currentText + ', ' + text;
+                if (currentText.length > 0) {
+                    // If current text doesn't end with newline, add one
+                    wordInput.value = currentText + '\n' + text;
                 } else {
-                    wordInput.value = currentText + text;
+                    wordInput.value = text;
                 }
                 
             } catch (err) {
